@@ -44,6 +44,9 @@ private:
     QString storageBaseUrl() const;
     QString firestoreBaseUrl() const;
 
+    int maxRetryCount = 3;
+    QMap<QString, int> retryCount;
+
 
 
 };

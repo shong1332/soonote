@@ -519,6 +519,12 @@ void MainWindow::registerAllFiles(const QString &folderPath)
     while (it.hasNext()) {
         QString path = it.next();
 
+        // 심볼릭 링크 제외 ← 추가
+        if (QFileInfo(path).isSymLink()) {
+            qDebug("Skipping symlink: %s", qPrintable(path));
+            continue;
+        }
+
         // .syncnote 폴더 제외
         if (path.contains("/.syncnote")) {
             continue;
@@ -595,6 +601,19 @@ bool MainWindow::decompressToFile(const QByteArray &compressed, const QString &t
         return false;
     }
 
+    // 읽기 전용 파일 체크 ← 추가
+    QFileInfo fileInfo(targetPath);
+    if (fileInfo.exists() && !fileInfo.isWritable()) {
+        qDebug("File is read-only, skipping: %s", qPrintable(targetPath));
+        QMessageBox msgBox;
+        msgBox.setWindowTitle("파일 쓰기 실패");
+        msgBox.setText("읽기 전용 파일입니다. 동기화할 수 없습니다.\n\n" + targetPath);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowFlags(Qt::WindowStaysOnTopHint);
+        msgBox.exec();
+        return false;
+    }
+
     QFile file(targetPath);
     if (!file.open(QIODevice::WriteOnly)) {
         qDebug("Failed to open file for writing: %s", qPrintable(targetPath));
@@ -606,6 +625,7 @@ bool MainWindow::decompressToFile(const QByteArray &compressed, const QString &t
     qDebug("Decompression completed for: %s", qPrintable(targetPath));
     return true;
 }
+
 // ───────────────────────────────
 // Firebase 초기화
 // ───────────────────────────────

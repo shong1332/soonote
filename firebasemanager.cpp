@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QDebug>
 #include <QFile>
+#include <QTimer>
 
 FirebaseManager::FirebaseManager(QObject *parent)
     : QObject(parent)
@@ -20,9 +21,6 @@ void FirebaseManager::setConfig(const QString &apiKey, const QString &projectId)
     qDebug("FirebaseManager config set");
 }
 
-// ───────────────────────────────
-// Base URLs
-// ───────────────────────────────
 QString FirebaseManager::storageBaseUrl() const
 {
     return QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o")
@@ -42,7 +40,6 @@ void FirebaseManager::uploadFile(const QString &localPath,
                                  const QString &remotePath,
                                  const QByteArray &compressed)
 {
-
     QString encodedPath = QString(QUrl::toPercentEncoding(remotePath, QByteArray("/")));
     QString url = QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o/%2?uploadType=media&key=%3")
                       .arg(projectId)
@@ -54,8 +51,27 @@ void FirebaseManager::uploadFile(const QString &localPath,
 
     QNetworkReply *reply = networkManager->put(request, compressed);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, remotePath]() {
-        onUploadReply(reply, remotePath);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, localPath, remotePath, compressed]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug("Upload finished for: %s", qPrintable(remotePath));
+            retryCount.remove(remotePath);
+            emit uploadFinished(remotePath, true);
+        } else {
+            int count = retryCount.value(remotePath, 0) + 1;
+            retryCount[remotePath] = count;
+
+            if (count < maxRetryCount) {
+                qDebug("Upload failed, retrying (%d/%d): %s", count, maxRetryCount, qPrintable(remotePath));
+                QTimer::singleShot(2000 * count, this, [this, localPath, remotePath, compressed]() {
+                    uploadFile(localPath, remotePath, compressed);
+                });
+            } else {
+                qDebug("Upload failed after %d retries: %s", maxRetryCount, qPrintable(remotePath));
+                retryCount.remove(remotePath);
+                emit uploadFinished(remotePath, false);
+            }
+        }
+        reply->deleteLater();
     });
 
     qDebug("Upload started for: %s", qPrintable(remotePath));
@@ -126,10 +142,22 @@ void FirebaseManager::deleteFile(const QString &remotePath)
     connect(reply, &QNetworkReply::finished, this, [this, reply, remotePath]() {
         if (reply->error() == QNetworkReply::NoError) {
             qDebug("Delete successful: %s", qPrintable(remotePath));
+            retryCount.remove(remotePath);
             emit deleteFinished(remotePath, true);
         } else {
-            qDebug("Delete failed: %s", qPrintable(reply->errorString()));
-            emit deleteFinished(remotePath, false);
+            int count = retryCount.value(remotePath, 0) + 1;
+            retryCount[remotePath] = count;
+
+            if (count < maxRetryCount) {
+                qDebug("Delete failed, retrying (%d/%d): %s", count, maxRetryCount, qPrintable(remotePath));
+                QTimer::singleShot(2000 * count, this, [this, remotePath]() {
+                    deleteFile(remotePath);
+                });
+            } else {
+                qDebug("Delete failed after %d retries: %s", maxRetryCount, qPrintable(remotePath));
+                retryCount.remove(remotePath);
+                emit deleteFinished(remotePath, false);
+            }
         }
         reply->deleteLater();
     });
@@ -146,7 +174,6 @@ void FirebaseManager::updateMetadata(const QString &filePath,
                                      qint64 fileSize)
 {
     QString encodedPath = QString(QUrl::toPercentEncoding(filePath, QByteArray("/")));
-    // remotePath 그대로 사용 (files/ 포함)
     QString url = QString("https://firestore.googleapis.com/v1/projects/%1/databases/(default)/documents/%2?key=%3")
                       .arg(projectId)
                       .arg(encodedPath)
@@ -163,15 +190,28 @@ void FirebaseManager::updateMetadata(const QString &filePath,
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
-    QNetworkReply *reply = networkManager->put(request, QJsonDocument(body).toJson());
+    QByteArray bodyData = QJsonDocument(body).toJson();
+    QNetworkReply *reply = networkManager->put(request, bodyData);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, filePath, hash, lastModified, fileSize]() {
         if (reply->error() == QNetworkReply::NoError) {
             qDebug("Metadata updated successfully");
+            retryCount.remove(filePath);
             emit metadataUpdated(true);
         } else {
-            qDebug("Metadata update failed: %s", qPrintable(reply->errorString()));
-            emit metadataUpdated(false);
+            int count = retryCount.value(filePath, 0) + 1;
+            retryCount[filePath] = count;
+
+            if (count < maxRetryCount) {
+                qDebug("Metadata update failed, retrying (%d/%d): %s", count, maxRetryCount, qPrintable(filePath));
+                QTimer::singleShot(2000 * count, this, [this, filePath, hash, lastModified, fileSize]() {
+                    updateMetadata(filePath, hash, lastModified, fileSize);
+                });
+            } else {
+                qDebug("Metadata update failed after %d retries: %s", maxRetryCount, qPrintable(filePath));
+                retryCount.remove(filePath);
+                emit metadataUpdated(false);
+            }
         }
         reply->deleteLater();
     });
