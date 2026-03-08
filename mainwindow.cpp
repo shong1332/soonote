@@ -448,25 +448,23 @@ void MainWindow::onDebounceTimeout()
 static QString xorEncrypt(const QString &input)
 {
     const QString key = "SooNote2026SecretKey!";
-    QString result;
-    for (int i = 0; i < input.length(); i++) {
-        result += QChar(input[i].unicode() ^ key[i % key.length()].unicode());
+    QByteArray data = input.toUtf8();
+    QByteArray keyData = key.toUtf8();
+    for (int i = 0; i < data.size(); i++) {
+        data[i] = data[i] ^ keyData[i % keyData.size()];
     }
-    return QString(result.toUtf8().toBase64());
+    return QString::fromLatin1(data.toBase64());
 }
 
 static QString xorDecrypt(const QString &input)
 {
-    QByteArray decoded = QByteArray::fromBase64(input.toUtf8());
-    QString str = QString::fromUtf8(decoded);
-
-
     const QString key = "SooNote2026SecretKey!";
-    QString result;
-    for (int i = 0; i < str.length(); i++) {
-        result += QChar(str[i].unicode() ^ key[i % key.length()].unicode());
+    QByteArray data = QByteArray::fromBase64(input.toLatin1());
+    QByteArray keyData = key.toUtf8();
+    for (int i = 0; i < data.size(); i++) {
+        data[i] = data[i] ^ keyData[i % keyData.size()];
     }
-    return result;
+    return QString::fromUtf8(data);
 }
 
 // ───────────────────────────────

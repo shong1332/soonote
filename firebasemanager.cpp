@@ -21,12 +21,12 @@ void FirebaseManager::setConfig(const QString &apiKey, const QString &projectId)
     qDebug("FirebaseManager config set");
 }
 
+
 QString FirebaseManager::storageBaseUrl() const
 {
-    return QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o")
+    return QString("https://firebasestorage.googleapis.com/v0/b/%1.firebasestorage.app/o")
     .arg(projectId);
 }
-
 QString FirebaseManager::firestoreBaseUrl() const
 {
     return QString("https://firestore.googleapis.com/v1/projects/%1/databases/(default)/documents")
@@ -50,17 +50,19 @@ void FirebaseManager::uploadFile(const QString &localPath,
     activeUploads++;
     qDebug("Active uploads: %d", activeUploads);
 
-    QString encodedPath = QString(QUrl::toPercentEncoding(remotePath, QByteArray("/")));
-    qDebug("Encoded URL path: %s", qPrintable(encodedPath)); // ← 추가
-    QString url = QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o/%2?uploadType=media&key=%3")
+    QString encodedName = QString(QUrl::toPercentEncoding(remotePath));
+    QString url = QString("https://firebasestorage.googleapis.com/v0/b/%1.firebasestorage.app/o?uploadType=media&name=%2&key=%3")
                       .arg(projectId)
-                      .arg(encodedPath)
+                      .arg(encodedName)
                       .arg(apiKey);
+
+
 
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
 
-    QNetworkReply *reply = networkManager->put(request, compressed);
+    QNetworkReply *reply = networkManager->post(request, compressed);
+    qDebug("Encoded URL path: %s", qPrintable(encodedName));
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, localPath, remotePath, compressed]() {
             activeUploads--;
@@ -69,6 +71,7 @@ void FirebaseManager::uploadFile(const QString &localPath,
             retryCount.remove(remotePath);
             emit uploadFinished(remotePath, true);
         } else {
+            qDebug("Upload error body: %s", reply->readAll().constData());
             int count = retryCount.value(remotePath, 0) + 1;
             retryCount[remotePath] = count;
 
@@ -186,9 +189,12 @@ void FirebaseManager::updateMetadata(const QString &filePath,
                                      qint64 fileSize)
 {
     QString encodedPath = QString(QUrl::toPercentEncoding(filePath, QByteArray("/")));
-    QString url = QString("https://firestore.googleapis.com/v1/projects/%1/databases/(default)/documents/%2?key=%3")
+    QString docId = filePath;
+    docId.replace("/", "__");
+
+    QString url = QString("https://firestore.googleapis.com/v1/projects/%1/databases/(default)/documents/soonote_files/%2?key=%3")
                       .arg(projectId)
-                      .arg(encodedPath)
+                      .arg(docId)
                       .arg(apiKey);
 
     QJsonObject fields;
@@ -203,7 +209,8 @@ void FirebaseManager::updateMetadata(const QString &filePath,
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
     QByteArray bodyData = QJsonDocument(body).toJson();
-    QNetworkReply *reply = networkManager->put(request, bodyData);
+
+    QNetworkReply *reply = networkManager->sendCustomRequest(request, "PATCH", QJsonDocument(body).toJson());
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, filePath, hash, lastModified, fileSize]() {
         if (reply->error() == QNetworkReply::NoError) {
@@ -211,6 +218,7 @@ void FirebaseManager::updateMetadata(const QString &filePath,
             retryCount.remove(filePath);
             emit metadataUpdated(true);
         } else {
+            qDebug("Metadata error body: %s", reply->readAll().constData());
             int count = retryCount.value(filePath, 0) + 1;
             retryCount[filePath] = count;
 
@@ -236,7 +244,7 @@ void FirebaseManager::updateMetadata(const QString &filePath,
 // ───────────────────────────────
 void FirebaseManager::fetchAllMetadata()
 {
-    QString url = QString("%1/files?key=%2")
+    QString url = QString("%1/soonote_files?key=%2")
     .arg(firestoreBaseUrl())
         .arg(apiKey);
 
