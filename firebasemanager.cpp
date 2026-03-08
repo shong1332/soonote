@@ -41,6 +41,7 @@ void FirebaseManager::uploadFile(const QString &localPath,
                                  const QByteArray &compressed)
 {
     QString encodedPath = QString(QUrl::toPercentEncoding(remotePath, QByteArray("/")));
+    qDebug("Encoded URL path: %s", qPrintable(encodedPath)); // ← 추가
     QString url = QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o/%2?uploadType=media&key=%3")
                       .arg(projectId)
                       .arg(encodedPath)
