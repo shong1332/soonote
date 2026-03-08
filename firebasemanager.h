@@ -47,6 +47,9 @@ private:
     int maxRetryCount = 3;
     QMap<QString, int> retryCount;
 
+    int activeUploads = 0;
+    const int maxConcurrentUploads = 3;
+
 
 
 };

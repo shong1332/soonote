@@ -443,12 +443,40 @@ void MainWindow::onDebounceTimeout()
 }
 
 // ───────────────────────────────
+// 간단한 XOR 암호화/복호화
+// ───────────────────────────────
+static QString xorEncrypt(const QString &input)
+{
+    const QString key = "SooNote2026SecretKey!";
+    QString result;
+    for (int i = 0; i < input.length(); i++) {
+        result += QChar(input[i].unicode() ^ key[i % key.length()].unicode());
+    }
+    return QString(result.toUtf8().toBase64());
+}
+
+static QString xorDecrypt(const QString &input)
+{
+    QByteArray decoded = QByteArray::fromBase64(input.toUtf8());
+    QString str = QString::fromUtf8(decoded);
+
+
+    const QString key = "SooNote2026SecretKey!";
+    QString result;
+    for (int i = 0; i < str.length(); i++) {
+        result += QChar(str[i].unicode() ^ key[i % key.length()].unicode());
+    }
+    return result;
+}
+
+// ───────────────────────────────
 // 설정 파일 관리
 // ───────────────────────────────
 QString MainWindow::getConfigPath()
 {
     return QDir::homePath() + "/.syncnote/config.json";
 }
+
 
 void MainWindow::loadConfig()
 {
@@ -457,14 +485,11 @@ void MainWindow::loadConfig()
         qDebug("Failed to open config file");
         return;
     }
-
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject obj = doc.object();
-
-    watchFolderPath  = obj["watch_folder"].toString();
-    firebaseApiKey   = obj["firebase_api_key"].toString();
-    firebaseProjectId = obj["firebase_project_id"].toString();
-
+    firebaseApiKey    = xorDecrypt(obj["firebase_api_key"].toString());
+    firebaseProjectId = xorDecrypt(obj["firebase_project_id"].toString());
+    watchFolderPath   = obj["watch_folder"].toString();
     qDebug("Config loaded: watch_folder = %s", qPrintable(watchFolderPath));
 }
 
@@ -473,21 +498,19 @@ void MainWindow::saveConfig(const QString &watchFolder,
                             const QString &projectId)
 {
     QJsonObject obj;
+    obj["firebase_api_key"]    = xorEncrypt(apiKey);
+    obj["firebase_project_id"] = xorEncrypt(projectId);
     obj["watch_folder"]        = watchFolder;
-    obj["firebase_api_key"]    = apiKey;
-    obj["firebase_project_id"] = projectId;
-
     QJsonDocument doc(obj);
-
     QFile file(getConfigPath());
     if (!file.open(QIODevice::WriteOnly)) {
         qDebug("Failed to save config file");
         return;
     }
-
     file.write(doc.toJson());
     qDebug("Config saved successfully");
 }
+
 
 // ───────────────────────────────
 // 파일 감시 등록

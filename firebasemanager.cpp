@@ -40,6 +40,16 @@ void FirebaseManager::uploadFile(const QString &localPath,
                                  const QString &remotePath,
                                  const QByteArray &compressed)
 {
+
+    if (activeUploads >= maxConcurrentUploads) {
+        qDebug("Upload queue full. Skipping: %s", qPrintable(remotePath));
+        emit uploadFinished(remotePath, false);
+        return;
+    }
+
+    activeUploads++;
+    qDebug("Active uploads: %d", activeUploads);
+
     QString encodedPath = QString(QUrl::toPercentEncoding(remotePath, QByteArray("/")));
     qDebug("Encoded URL path: %s", qPrintable(encodedPath)); // ← 추가
     QString url = QString("https://firebasestorage.googleapis.com/v0/b/%1.appspot.com/o/%2?uploadType=media&key=%3")
@@ -53,6 +63,7 @@ void FirebaseManager::uploadFile(const QString &localPath,
     QNetworkReply *reply = networkManager->put(request, compressed);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, localPath, remotePath, compressed]() {
+            activeUploads--;
         if (reply->error() == QNetworkReply::NoError) {
             qDebug("Upload finished for: %s", qPrintable(remotePath));
             retryCount.remove(remotePath);
