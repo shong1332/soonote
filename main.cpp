@@ -1,15 +1,26 @@
-#include "mainwindow.h"
 #include <QApplication>
+#include <QLockFile>
+#include <QDir>
+#include <QMessageBox>
+#include "mainwindow.h"
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-
-    // 트레이 앱은 마지막 창 닫혀도 종료 안 함
     a.setQuitOnLastWindowClosed(false);
 
-    MainWindow w;
-    // w.show() 제거 (백그라운드 앱)
+    // 중복 실행 방지
+    QLockFile lockFile(QDir::tempPath() + "/soonote.lock");
+    if (!lockFile.tryLock(100)) {
+        QMessageBox msgBox;
+        msgBox.setWindowTitle("SooNote");
+        msgBox.setText("SooNote가 이미 실행 중입니다.");
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowFlags(Qt::WindowStaysOnTopHint);
+        msgBox.exec();
+        return 1;
+    }
 
+    MainWindow w;
     return a.exec();
 }

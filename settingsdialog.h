@@ -24,7 +24,7 @@ public:
 
 private slots:
     void onBrowseClicked();
-    void onOkClicked();
+    void validateAndAccept();
 
 private:
     Ui::SettingsDialog *ui;

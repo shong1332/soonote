@@ -211,6 +211,7 @@ void MainWindow::initTray()
 void MainWindow::initFileWatcher()
 {
     fileWatcher = new QFileSystemWatcher(this);
+        qDebug("Watched directories: %s", qPrintable(fileWatcher->directories().join(", ")));
     debounceTimer = new QTimer(this);
     debounceTimer->setSingleShot(true);
     debounceTimer->setInterval(1000); // 10초
@@ -334,9 +335,15 @@ void MainWindow::onOpenSettings()
 
 void MainWindow::onFileChanged(const QString &path)
 {
+    // 파일이 삭제된 경우 무시
+    if (!QFile::exists(path)) {
+        qDebug("File no longer exists, ignoring: %s", qPrintable(path));
+        return;
+    }
+
     qDebug("File change detected: %s", qPrintable(path));
     pendingFilePath = path;
-    debounceTimer->start(); // 10초 디바운스 시작
+    debounceTimer->start();
 }
 
 void MainWindow::onDirectoryChanged(const QString &path)
@@ -344,35 +351,47 @@ void MainWindow::onDirectoryChanged(const QString &path)
     qDebug("Directory change detected: %s", qPrintable(path));
 
     if (!QDir(path).exists()) {
-        qDebug("Watched directory removed. Re-registering...");
         fileWatcher->removePaths(fileWatcher->files());
         fileWatcher->removePaths(fileWatcher->directories());
         registerWatchFolder(watchFolderPath);
         return;
     }
 
-    // 해당 디렉토리의 파일만 검사 (전체 X)
+    // 해당 디렉토리의 직접 자식 파일만 검사 (서브폴더 제외)
     QStringList watchedFiles = fileWatcher->files();
     for (const QString &filePath : watchedFiles) {
-        if (!filePath.startsWith(path)) continue; // ← 이 디렉토리 파일만
+        QFileInfo fi(filePath);
+        if (fi.absolutePath() != path) continue; // ← 직접 자식만
         if (!QFile::exists(filePath)) {
             qDebug("File deleted detected: %s", qPrintable(filePath));
             handleFileDeleted(filePath);
         }
     }
 
-    // 새로 생긴 파일 감시 등록
     registerAllFiles(path);
 }
 
 void MainWindow::onDebounceTimeout()
 {
     qDebug("Debounce timeout. Starting push for: %s", qPrintable(pendingFilePath));
-
     updateTrayStatus("업로드 중...");
-
     if (pendingFilePath.isEmpty()) {
         qDebug("No pending file. Skipping push");
+        return;
+    }
+
+    // 파일 크기 제한 (50MB) ← 맨 위로 이동
+    QFileInfo fileInfo(pendingFilePath);
+    if (fileInfo.size() > 50 * 1024 * 1024) {
+        qDebug("File too large. Skipping push: %s", qPrintable(pendingFilePath));
+        QMessageBox msgBox;
+        msgBox.setWindowTitle("파일 크기 초과");
+        msgBox.setText("50MB 이상 파일은 동기화되지 않습니다.\n\n" + pendingFilePath);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowFlags(Qt::WindowStaysOnTopHint);
+        msgBox.exec();
+        pendingFilePath.clear();
+        updateTrayStatus("대기 중");
         return;
     }
 
@@ -406,8 +425,8 @@ void MainWindow::onDebounceTimeout()
     // 5. Firebase 업로드
     firebaseManager->uploadFile(pendingFilePath, remotePath, compressed);
 
-    // 6. Firestore 메타데이터 업데이트
-    QFileInfo fileInfo(pendingFilePath);
+
+
     firebaseManager->updateMetadata(
         remotePath,  // ← files/ 없이 그냥 경로만
         currentHash,
@@ -481,6 +500,10 @@ void MainWindow::registerWatchFolder(const QString &folderPath)
         return;
     }
 
+    // 루트 폴더 자체 감시 등록 ← 추가
+    fileWatcher->addPath(folderPath);
+    qDebug("Watching directory: %s", qPrintable(folderPath));
+
     registerAllFiles(folderPath);
     qDebug("Watch folder registered: %s", qPrintable(folderPath));
 }
@@ -515,21 +538,27 @@ void MainWindow::registerAllFiles(const QString &folderPath)
         }
     }
 }
-
 bool MainWindow::isTextFile(const QString &filePath)
 {
-    QStringList textExtensions;
-    textExtensions << ".txt" << ".md" << ".log"
-                   << ".csv" << ".json" << ".xml"
-                   << ".html" << ".css" << ".js"
-                   << ".cpp" << ".h" << ".py";
+    // 숨김 파일 제외 (.DS_Store, .gitignore 등)
+    QFileInfo info(filePath);
+    if (info.fileName().startsWith(".")) return false;
 
-    foreach (const QString &ext, textExtensions) {
-        if (filePath.endsWith(ext, Qt::CaseInsensitive)) {
-            return true;
-        }
+    // 숨김 폴더 제외
+    QStringList parts = filePath.split("/");
+    for (const QString &part : parts) {
+        if (part.startsWith(".")) return false;
     }
-    return false;
+
+    // 텍스트 파일 확장자 체크
+    QStringList textExtensions = {
+        "txt", "md", "log", "csv", "json", "xml",
+        "html", "css", "js", "cpp", "h", "py",
+        "ts", "jsx", "tsx", "vue", "swift", "kt"
+    };
+
+    QString ext = info.suffix().toLower();
+    return textExtensions.contains(ext);
 }
 
 // ───────────────────────────────
@@ -539,20 +568,21 @@ QByteArray MainWindow::compressFile(const QString &filePath)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        qDebug("Failed to open file for compression: %s", qPrintable(filePath));
+        qDebug("Failed to open file: %s", qPrintable(filePath));
         return QByteArray();
     }
 
-    QByteArray compressed;
-    const qint64 CHUNK_SIZE = 1024 * 1024; // 1MB 청크
+    QByteArray data = file.readAll();
+    file.close();
 
-    while (!file.atEnd()) {
-        QByteArray chunk = file.read(CHUNK_SIZE);
-        compressed.append(qCompress(chunk, 6));
-        qDebug("Compressed chunk: %d bytes", (int)chunk.size());
+    // 빈 파일 처리
+    if (data.isEmpty()) {
+        qDebug("Empty file, using empty compressed data: %s", qPrintable(filePath));
+        return qCompress(QByteArray(""), 6); // 빈 데이터 압축
     }
 
-    file.close();
+    QByteArray compressed = qCompress(data, 6);
+    qDebug("Compressed chunk: %d bytes", compressed.size());
     qDebug("Compression completed for: %s", qPrintable(filePath));
     return compressed;
 }

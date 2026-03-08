@@ -13,12 +13,12 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 
     connect(ui->browseButton, &QPushButton::clicked,
             this, &SettingsDialog::onBrowseClicked);
-
-    // OK 버튼 직접 연결 (기본 accept 대신)
     connect(ui->buttonBox, &QDialogButtonBox::accepted,
-            this, &SettingsDialog::onOkClicked);
+            this, &SettingsDialog::validateAndAccept,
+            Qt::UniqueConnection);
     connect(ui->buttonBox, &QDialogButtonBox::rejected,
-            this, &SettingsDialog::reject);
+            this, &SettingsDialog::reject,
+            Qt::UniqueConnection);
 }
 
 SettingsDialog::~SettingsDialog()
@@ -64,7 +64,7 @@ void SettingsDialog::setCurrentSettings(const QString &watchFolder,
     ui->projectIdEdit->setText(projectId);
 }
 
-void SettingsDialog::onOkClicked()
+void SettingsDialog::validateAndAccept()
 {
 
     QString folder  = ui->watchFolderEdit->text();
