@@ -1,3 +1,4 @@
+#include "macutils.h"
 #include <QApplication>
 #include <QLockFile>
 #include <QDir>
@@ -7,6 +8,7 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    hideDockIcon();
     a.setQuitOnLastWindowClosed(false);
 
     // 중복 실행 방지

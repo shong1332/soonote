@@ -29,7 +29,9 @@ CONFIG += embed_translations
 
 # Default rules for deployment.
 macx: LIBS += -framework Carbon
+mac: OBJECTIVE_SOURCES += macutils.mm
 win32: LIBS += -luser32
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+QMAKE_INFO_PLIST = Info.plist
