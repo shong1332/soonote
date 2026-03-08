@@ -807,6 +807,17 @@ void MainWindow::performPull()
                         continue;
                     }
 
+                    // LWW - 타임스탬프 비교 ← 추가
+                    QString localModified = getLocalModifiedTime(localPath);
+                    if (!localModified.isEmpty() && !lastModified.isEmpty()) {
+                        QDateTime localTime = QDateTime::fromString(localModified, Qt::ISODate);
+                        QDateTime serverTime = QDateTime::fromString(lastModified, Qt::ISODate);
+                        if (localTime > serverTime) {
+                            qDebug("Local is newer. Skipping download: %s", qPrintable(localPath));
+                            continue;
+                        }
+                    }
+
                     // 서버가 더 최신이면 다운로드
                     qDebug("File outdated. Downloading: %s", qPrintable(localPath));
                     backupFile(localPath);
@@ -1171,4 +1182,15 @@ void MainWindow::testFirebaseConnection()
         }
         reply->deleteLater();
     });
+}
+
+QString MainWindow::getLocalModifiedTime(const QString &filePath)
+{
+    QSqlQuery query(db);
+    query.prepare("SELECT last_modified FROM file_metadata WHERE file_path = :path");
+    query.bindValue(":path", filePath);
+    if (query.exec() && query.next()) {
+        return query.value(0).toString();
+    }
+    return QString();
 }

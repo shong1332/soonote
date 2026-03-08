@@ -102,6 +102,7 @@ private:
     void scanAndPushChanges();
 
     void testFirebaseConnection();
+    QString getLocalModifiedTime(const QString &filePath);
 };
 
 #endif // MAINWINDOW_H
