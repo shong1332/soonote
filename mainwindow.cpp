@@ -813,8 +813,7 @@ void MainWindow::performPull()
                     localPath.remove(".gz");
 
                     QString localHash = getLocalMetadata(localPath);
-
-                    if (localHash == serverHash) {QString localHash = getLocalMetadata(localPath);
+                    if (localHash == serverHash) {
                         qDebug("File up to date: %s", qPrintable(localPath));
                         continue;
                     }
@@ -835,7 +834,7 @@ void MainWindow::performPull()
                     backupFile(localPath);
                     firebaseManager->downloadFile(remotePath, localPath);
                 }
-            });
+            },  Qt::UniqueConnection);
 
     firebaseManager->fetchAllMetadata();
 }
