@@ -679,12 +679,22 @@ void MainWindow::initFirebase()
                     qDebug("Upload failed: %s", qPrintable(path));
             });
 
+
     connect(firebaseManager, &FirebaseManager::downloadFinished,
-            this, [](const QString &remotePath, const QString &localPath, bool success) {
-                if (success)
+            this, [this](const QString &remotePath, const QString &localPath, const QByteArray &data, bool success) {
+                if (success) {
                     qDebug("Download finished: %s to %s", qPrintable(remotePath), qPrintable(localPath));
-                else
+                    // 폴더 생성
+                    QDir().mkpath(QFileInfo(localPath).absolutePath());
+                    // 압축 해제 후 저장
+                    if (decompressToFile(data, localPath)) {
+                        QString hash = calculateFileHash(localPath);
+                        updateLocalMetadata(localPath, hash, QFileInfo(localPath).size());
+                        qDebug("File saved: %s", qPrintable(localPath));
+                    }
+                } else {
                     qDebug("Download failed: %s", qPrintable(remotePath));
+                }
             });
 }
 

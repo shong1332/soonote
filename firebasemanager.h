@@ -28,7 +28,7 @@ public:
 
 signals:
     void uploadFinished(const QString &remotePath, bool success);
-    void downloadFinished(const QString &remotePath, const QString &localPath, bool success);
+    void downloadFinished(const QString &remotePath, const QString &localPath, const QByteArray &data, bool success);
     void deleteFinished(const QString &remotePath, bool success);
     void metadataUpdated(bool success);
     void allMetadataFetched(const QJsonObject &metadata);

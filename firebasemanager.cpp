@@ -132,10 +132,10 @@ void FirebaseManager::onDownloadReply(QNetworkReply *reply,
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray compressed = reply->readAll();
         qDebug("Download successful: %s", qPrintable(remotePath));
-        emit downloadFinished(remotePath, localPath, true);
+        emit downloadFinished(remotePath, localPath, compressed, true);
     } else {
         qDebug("Download failed: %s", qPrintable(reply->errorString()));
-        emit downloadFinished(remotePath, localPath, false);
+        emit downloadFinished(remotePath, localPath, QByteArray(), false);
     }
     reply->deleteLater();
 }
