@@ -24,6 +24,7 @@ public:
                         const QString &lastModified, qint64 fileSize);
     void fetchAllMetadata();
     QNetworkAccessManager* getNetworkManager() const;
+    void deleteMetadata(const QString &remotePath);
 
 signals:
     void uploadFinished(const QString &remotePath, bool success);
@@ -31,6 +32,7 @@ signals:
     void deleteFinished(const QString &remotePath, bool success);
     void metadataUpdated(bool success);
     void allMetadataFetched(const QJsonObject &metadata);
+
 
 private slots:
     void onUploadReply(QNetworkReply *reply, const QString &remotePath);

@@ -210,11 +210,20 @@ void MainWindow::initTray()
 // ───────────────────────────────
 void MainWindow::initFileWatcher()
 {
+
     fileWatcher = new QFileSystemWatcher(this);
         qDebug("Watched directories: %s", qPrintable(fileWatcher->directories().join(", ")));
     debounceTimer = new QTimer(this);
     debounceTimer->setSingleShot(true);
-    debounceTimer->setInterval(1000); // 10초
+    debounceTimer->setInterval(10000); // 10초
+
+    // 5분마다 자동 Pull
+    QTimer *autoPullTimer = new QTimer(this);
+    autoPullTimer->setInterval(5 * 60 * 1000); // 5분
+    connect(autoPullTimer, &QTimer::timeout, this, &MainWindow::performPull);
+    autoPullTimer->start();
+    qDebug("Auto pull timer started (5 min interval)");
+
 
     connect(fileWatcher, &QFileSystemWatcher::fileChanged,
             this, &MainWindow::onFileChanged);
@@ -786,9 +795,15 @@ void MainWindow::performPull()
                 QJsonArray documents = metadata["documents"].toArray();
 
                 for (const QJsonValue &doc : documents) {
-                    QJsonObject fields = doc.toObject()["fields"].toObject();
+                    QJsonObject docObj = doc.toObject();
+                    QJsonObject fields = docObj["fields"].toObject();
 
-                    QString remotePath   = fields["remotePath"].toObject()["stringValue"].toString();
+                    // 문서 ID에서 remotePath 추출 ← 수정
+                    QString docName = docObj["name"].toString();
+                    QString docId = docName.mid(docName.lastIndexOf("/") + 1);
+                    QString remotePath = docId;
+                    remotePath.replace("__", "/"); // __ → / 복원
+
                     QString serverHash   = fields["hash"].toObject()["stringValue"].toString();
                     QString lastModified = fields["lastModified"].toObject()["stringValue"].toString();
 
@@ -797,10 +812,9 @@ void MainWindow::performPull()
                                         remotePath.mid(QString("files/").length());
                     localPath.remove(".gz");
 
-                    // 로컬 해시와 비교
                     QString localHash = getLocalMetadata(localPath);
 
-                    if (localHash == serverHash) {
+                    if (localHash == serverHash) {QString localHash = getLocalMetadata(localPath);
                         qDebug("File up to date: %s", qPrintable(localPath));
                         continue;
                     }
@@ -866,7 +880,7 @@ void MainWindow::handleFileDeleted(const QString &filePath)
     firebaseManager->deleteFile(remotePath);
 
     // 2. Firestore 메타데이터 삭제
-    firebaseManager->deleteFile("metadata/" + remotePath);
+    firebaseManager->deleteMetadata(remotePath);
 
     // 3. 로컬 DB에서 삭제
     QSqlQuery query;

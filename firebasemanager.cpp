@@ -270,3 +270,28 @@ QNetworkAccessManager* FirebaseManager::getNetworkManager() const
 {
     return networkManager;
 }
+
+void FirebaseManager::deleteMetadata(const QString &remotePath)
+{
+    QString docId = remotePath;
+    docId.replace("/", "__");
+
+    QString url = QString("https://firestore.googleapis.com/v1/projects/%1/databases/(default)/documents/soonote_files/%2?key=%3")
+                      .arg(projectId)
+                      .arg(docId)
+                      .arg(apiKey);
+
+    QNetworkRequest request(url);
+    QNetworkReply *reply = networkManager->deleteResource(request);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, remotePath]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug("Metadata deleted successfully: %s", qPrintable(remotePath));
+        } else {
+            qDebug("Metadata delete failed: %s", qPrintable(reply->errorString()));
+        }
+        reply->deleteLater();
+    });
+
+    qDebug("Metadata delete started for: %s", qPrintable(remotePath));
+}
